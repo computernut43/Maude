@@ -1,3 +1,5 @@
+# In SUPER BETA MODE, as I just "Vibe" coded this since I wanted to use MariaDB, I have not used it yet, so I cannot confirm that this works or not. Use at your own risk. 
+
 # Maude
 
 **Listen here, darling — this is a robust, opinionated issue tracker that doesn't beat around the bush.**
