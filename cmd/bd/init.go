@@ -33,8 +33,6 @@ var initCmd = &cobra.Command{
 	Long: `Initialize bd in the current directory by creating a .beads/ directory
 and database file. Optionally specify a custom issue prefix.
 
-With --no-db: creates .beads/ directory and issues.jsonl file instead of SQLite database.
-
 With --from-jsonl: imports from the current .beads/issues.jsonl file on disk instead
 of scanning git history. Use this after manual JSONL cleanup (e.g., bd compact --purge-tombstones)
 to prevent deleted issues from being resurrected during re-initialization.
@@ -44,11 +42,17 @@ With --stealth: configures per-repository git settings for invisible beads usage
   • Claude Code settings with bd onboard instruction
   Perfect for personal use without affecting repo collaborators.
 
+With --backend mariadb: uses MariaDB as the storage backend (default). Connection details
+can be set with --mariadb-host, --mariadb-port, --mariadb-user, and --mariadb-database.
+Password should be set via BEADS_MARIADB_PASSWORD environment variable.
+
 With --backend dolt: uses Dolt as the storage backend. If a dolt sql-server is detected
 running on port 3307 or 3306, server mode is automatically enabled for multi-writer access.
 Use --server to explicitly enable server mode, or set connection details with --server-host,
 --server-port, and --server-user. Password should be set via BEADS_DOLT_PASSWORD environment
-variable.`,
+variable.
+
+With --backend sqlite: uses SQLite as the storage backend (local file-based storage).`,
 	Run: func(cmd *cobra.Command, _ []string) {
 		prefix, _ := cmd.Flags().GetString("prefix")
 		quiet, _ := cmd.Flags().GetBool("quiet")
@@ -68,13 +72,19 @@ variable.`,
 		serverPort, _ := cmd.Flags().GetInt("server-port")
 		serverUser, _ := cmd.Flags().GetString("server-user")
 
+		// MariaDB connection flags
+		mariadbHost, _ := cmd.Flags().GetString("mariadb-host")
+		mariadbPort, _ := cmd.Flags().GetInt("mariadb-port")
+		mariadbUser, _ := cmd.Flags().GetString("mariadb-user")
+		mariadbDatabase, _ := cmd.Flags().GetString("mariadb-database")
+
 		// Validate backend flag
-		if backend != "" && backend != configfile.BackendSQLite && backend != configfile.BackendDolt {
-			fmt.Fprintf(os.Stderr, "Error: invalid backend '%s' (must be 'sqlite' or 'dolt')\n", backend)
+		if backend != "" && backend != configfile.BackendSQLite && backend != configfile.BackendDolt && backend != configfile.BackendMariaDB {
+			fmt.Fprintf(os.Stderr, "Error: invalid backend '%s' (must be 'sqlite', 'dolt', or 'mariadb')\n", backend)
 			os.Exit(1)
 		}
 		if backend == "" {
-			backend = configfile.BackendSQLite // Default to SQLite
+			backend = configfile.BackendMariaDB // Default to MariaDB
 		}
 
 		// Validate server mode requires dolt backend
@@ -342,11 +352,25 @@ variable.`,
 		// Create storage backend based on --backend flag
 		var storagePath string
 		var store storage.Storage
-		if backend == configfile.BackendDolt {
+		switch backend {
+		case configfile.BackendDolt:
 			// Dolt uses a directory, not a file
 			storagePath = filepath.Join(beadsDir, "dolt")
 			store, err = factory.New(ctx, backend, storagePath)
-		} else {
+		case configfile.BackendMariaDB:
+			// MariaDB uses the database name as the path (for compatibility with factory)
+			storagePath = mariadbDatabase
+			if storagePath == "" {
+				storagePath = configfile.DefaultMariaDBDatabase
+			}
+			store, err = factory.NewWithOptions(ctx, backend, storagePath, factory.Options{
+				ServerHost: mariadbHost,
+				ServerPort: mariadbPort,
+				ServerUser: mariadbUser,
+				Database:   storagePath,
+			})
+		default:
+			// SQLite (default for legacy support)
 			storagePath = initDBPath
 			store, err = sqlite.New(ctx, storagePath)
 		}
@@ -432,9 +456,31 @@ variable.`,
 			}
 
 			// Save backend choice (only store if non-default to keep metadata.json clean)
-			if backend != configfile.BackendSQLite {
+			if backend != configfile.BackendMariaDB {
 				cfg.Backend = backend
+			} else {
+				cfg.Backend = backend // Always save MariaDB as it's the new default
 			}
+
+			// In MariaDB mode, save connection configuration
+			if backend == configfile.BackendMariaDB {
+				if cfg.Database == "" || cfg.Database == beads.CanonicalDatabaseName {
+					cfg.Database = "beads"
+				}
+				if mariadbHost != "" {
+					cfg.MariaDBHost = mariadbHost
+				}
+				if mariadbPort != 0 {
+					cfg.MariaDBPort = mariadbPort
+				}
+				if mariadbUser != "" {
+					cfg.MariaDBUser = mariadbUser
+				}
+				if mariadbDatabase != "" {
+					cfg.MariaDBDatabase = mariadbDatabase
+				}
+			}
+
 			// In Dolt mode, metadata.json.database should point to the Dolt directory (not beads.db).
 			// Backward-compat: older dolt setups left this as "beads.db", which is misleading and
 			// can trigger SQLite-only code paths.
@@ -732,7 +778,7 @@ func init() {
 	initCmd.Flags().StringP("prefix", "p", "", "Issue prefix (default: current directory name)")
 	initCmd.Flags().BoolP("quiet", "q", false, "Suppress output (quiet mode)")
 	initCmd.Flags().StringP("branch", "b", "", "Git branch for beads commits (default: current branch)")
-	initCmd.Flags().String("backend", "", "Storage backend: sqlite (default) or dolt (version-controlled)")
+	initCmd.Flags().String("backend", "", "Storage backend: mariadb (default), sqlite, or dolt")
 	initCmd.Flags().Bool("contributor", false, "Run OSS contributor setup wizard")
 	initCmd.Flags().Bool("team", false, "Run team workflow setup wizard")
 	initCmd.Flags().Bool("stealth", false, "Enable stealth mode: global gitattributes and gitignore, no local repo tracking")
@@ -747,6 +793,12 @@ func init() {
 	initCmd.Flags().String("server-host", "", "Dolt server host (default: 127.0.0.1)")
 	initCmd.Flags().Int("server-port", 0, "Dolt server port (default: 3307)")
 	initCmd.Flags().String("server-user", "", "Dolt server MySQL user (default: root)")
+
+	// MariaDB connection flags
+	initCmd.Flags().String("mariadb-host", "", "MariaDB server host (default: 127.0.0.1, env: BEADS_MARIADB_HOST)")
+	initCmd.Flags().Int("mariadb-port", 0, "MariaDB server port (default: 3306, env: BEADS_MARIADB_PORT)")
+	initCmd.Flags().String("mariadb-user", "", "MariaDB user (default: root, env: BEADS_MARIADB_USER)")
+	initCmd.Flags().String("mariadb-database", "", "MariaDB database name (default: beads, env: BEADS_MARIADB_DATABASE)")
 
 	rootCmd.AddCommand(initCmd)
 }

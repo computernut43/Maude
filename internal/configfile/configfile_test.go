@@ -9,13 +9,18 @@ import (
 func TestDefaultConfig(t *testing.T) {
 	cfg := DefaultConfig()
 
-	if cfg.Database != "beads.db" {
-		t.Errorf("Database = %q, want beads.db", cfg.Database)
+	if cfg.Database != "beads" {
+		t.Errorf("Database = %q, want beads", cfg.Database)
 	}
 
 	// bd-6xd: issues.jsonl is the canonical name
 	if cfg.JSONLExport != "issues.jsonl" {
 		t.Errorf("JSONLExport = %q, want issues.jsonl", cfg.JSONLExport)
+	}
+
+	// MariaDB is now the default backend
+	if cfg.Backend != BackendMariaDB {
+		t.Errorf("Backend = %q, want %q", cfg.Backend, BackendMariaDB)
 	}
 }
 
@@ -65,10 +70,34 @@ func TestLoadNonexistent(t *testing.T) {
 
 func TestDatabasePath(t *testing.T) {
 	beadsDir := "/home/user/project/.beads"
-	cfg := &Config{Database: "beads.db"}
+	cfg := &Config{Database: "beads.db", Backend: BackendSQLite}
 
 	got := cfg.DatabasePath(beadsDir)
 	want := filepath.Join(beadsDir, "beads.db")
+
+	if got != want {
+		t.Errorf("DatabasePath() = %q, want %q", got, want)
+	}
+}
+
+func TestDatabasePath_MariaDB(t *testing.T) {
+	beadsDir := "/home/user/project/.beads"
+	cfg := &Config{Database: "", Backend: BackendMariaDB, MariaDBDatabase: "mybeads"}
+
+	got := cfg.DatabasePath(beadsDir)
+	want := "mybeads"
+
+	if got != want {
+		t.Errorf("DatabasePath() = %q, want %q", got, want)
+	}
+}
+
+func TestDatabasePath_MariaDB_Default(t *testing.T) {
+	beadsDir := "/home/user/project/.beads"
+	cfg := &Config{Backend: BackendMariaDB}
+
+	got := cfg.DatabasePath(beadsDir)
+	want := DefaultMariaDBDatabase
 
 	if got != want {
 		t.Errorf("DatabasePath() = %q, want %q", got, want)

@@ -14,7 +14,7 @@ const ConfigFileName = "metadata.json"
 type Config struct {
 	Database    string `json:"database"`
 	JSONLExport string `json:"jsonl_export,omitempty"`
-	Backend     string `json:"backend,omitempty"` // "sqlite" (default) or "dolt"
+	Backend     string `json:"backend,omitempty"` // "sqlite" (default), "dolt", or "mariadb"
 
 	// Deletions configuration
 	DeletionsRetentionDays int `json:"deletions_retention_days,omitempty"` // 0 means use default (3 days)
@@ -29,6 +29,13 @@ type Config struct {
 	DoltDatabase   string `json:"dolt_database,omitempty"`    // SQL database name (default: beads)
 	// Note: Password should be set via BEADS_DOLT_PASSWORD env var for security
 
+	// MariaDB connection configuration
+	MariaDBHost     string `json:"mariadb_host,omitempty"`     // Server host (default: 127.0.0.1)
+	MariaDBPort     int    `json:"mariadb_port,omitempty"`     // Server port (default: 3306)
+	MariaDBUser     string `json:"mariadb_user,omitempty"`     // MySQL user (default: root)
+	MariaDBDatabase string `json:"mariadb_database,omitempty"` // Database name (default: beads)
+	// Note: Password should be set via BEADS_MARIADB_PASSWORD env var for security
+
 	// Stale closed issues check configuration
 	// 0 = disabled (default), positive = threshold in days
 	StaleClosedIssuesDays int `json:"stale_closed_issues_days,omitempty"`
@@ -42,8 +49,9 @@ type Config struct {
 
 func DefaultConfig() *Config {
 	return &Config{
-		Database:    "beads.db",
+		Database:    "beads",
 		JSONLExport: "issues.jsonl", // Canonical name (bd-6xd)
+		Backend:     BackendMariaDB, // MariaDB is the default backend
 	}
 }
 
@@ -122,6 +130,15 @@ func (c *Config) DatabasePath(beadsDir string) string {
 		return filepath.Join(beadsDir, "dolt")
 	}
 
+	if backend == BackendMariaDB {
+		// For MariaDB backend, return the database name (not a file path).
+		// MariaDB stores data on the server, not locally.
+		if c.MariaDBDatabase != "" {
+			return c.MariaDBDatabase
+		}
+		return DefaultMariaDBDatabase
+	}
+
 	// SQLite (default)
 	db := strings.TrimSpace(c.Database)
 	if db == "" {
@@ -162,8 +179,9 @@ func (c *Config) GetStaleClosedIssuesDays() int {
 
 // Backend constants
 const (
-	BackendSQLite = "sqlite"
-	BackendDolt   = "dolt"
+	BackendSQLite  = "sqlite"
+	BackendDolt    = "dolt"
+	BackendMariaDB = "mariadb"
 )
 
 // BackendCapabilities describes behavioral constraints for a storage backend.
@@ -186,6 +204,9 @@ func CapabilitiesForBackend(backend string) BackendCapabilities {
 	case BackendDolt:
 		// Dolt uses server mode which supports multi-writer access
 		return BackendCapabilities{SingleProcessOnly: false}
+	case BackendMariaDB:
+		// MariaDB uses server mode which supports multi-writer access
+		return BackendCapabilities{SingleProcessOnly: false}
 	default:
 		return BackendCapabilities{SingleProcessOnly: true}
 	}
@@ -196,10 +217,10 @@ func (c *Config) GetCapabilities() BackendCapabilities {
 	return CapabilitiesForBackend(c.GetBackend())
 }
 
-// GetBackend returns the configured backend type, defaulting to SQLite.
+// GetBackend returns the configured backend type, defaulting to MariaDB.
 func (c *Config) GetBackend() string {
 	if c.Backend == "" {
-		return BackendSQLite
+		return BackendMariaDB
 	}
 	return c.Backend
 }
@@ -277,4 +298,62 @@ func (c *Config) GetDoltDatabase() string {
 		return c.DoltDatabase
 	}
 	return DefaultDoltDatabase
+}
+
+// Default MariaDB server settings
+const (
+	DefaultMariaDBHost     = "127.0.0.1"
+	DefaultMariaDBPort     = 3306 // Standard MySQL/MariaDB port
+	DefaultMariaDBUser     = "root"
+	DefaultMariaDBDatabase = "beads"
+)
+
+// GetMariaDBHost returns the MariaDB server host.
+// Checks BEADS_MARIADB_HOST env var first, then config, then default.
+func (c *Config) GetMariaDBHost() string {
+	if h := os.Getenv("BEADS_MARIADB_HOST"); h != "" {
+		return h
+	}
+	if c.MariaDBHost != "" {
+		return c.MariaDBHost
+	}
+	return DefaultMariaDBHost
+}
+
+// GetMariaDBPort returns the MariaDB server port.
+// Checks BEADS_MARIADB_PORT env var first, then config, then default.
+func (c *Config) GetMariaDBPort() int {
+	if p := os.Getenv("BEADS_MARIADB_PORT"); p != "" {
+		if port, err := strconv.Atoi(p); err == nil {
+			return port
+		}
+	}
+	if c.MariaDBPort > 0 {
+		return c.MariaDBPort
+	}
+	return DefaultMariaDBPort
+}
+
+// GetMariaDBUser returns the MariaDB server user.
+// Checks BEADS_MARIADB_USER env var first, then config, then default.
+func (c *Config) GetMariaDBUser() string {
+	if u := os.Getenv("BEADS_MARIADB_USER"); u != "" {
+		return u
+	}
+	if c.MariaDBUser != "" {
+		return c.MariaDBUser
+	}
+	return DefaultMariaDBUser
+}
+
+// GetMariaDBDatabase returns the MariaDB database name.
+// Checks BEADS_MARIADB_DATABASE env var first, then config, then default.
+func (c *Config) GetMariaDBDatabase() string {
+	if d := os.Getenv("BEADS_MARIADB_DATABASE"); d != "" {
+		return d
+	}
+	if c.MariaDBDatabase != "" {
+		return c.MariaDBDatabase
+	}
+	return DefaultMariaDBDatabase
 }
