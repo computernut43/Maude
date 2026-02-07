@@ -4,7 +4,7 @@
 
 If you discover a security vulnerability in bd, please report it responsibly:
 
-**Email**: security@steveyegge.com (or open a private security advisory on GitHub)
+**Email**: contact@htan.org (or open a private security advisory on GitHub)
 
 Please include:
 - Description of the vulnerability
