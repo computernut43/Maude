@@ -44,7 +44,7 @@ func New(ctx context.Context, backend, path string) (storage.Storage, error) {
 // NewWithOptions creates a storage backend with the specified options.
 func NewWithOptions(ctx context.Context, backend, path string, opts Options) (storage.Storage, error) {
 	switch backend {
-	case configfile.BackendSQLite, "":
+	case configfile.BackendSQLite:
 		if opts.ReadOnly {
 			if opts.LockTimeout > 0 {
 				return sqlite.NewReadOnlyWithTimeout(ctx, path, opts.LockTimeout)
@@ -55,6 +55,13 @@ func NewWithOptions(ctx context.Context, backend, path string, opts Options) (st
 			return sqlite.NewWithTimeout(ctx, path, opts.LockTimeout)
 		}
 		return sqlite.New(ctx, path)
+	case configfile.BackendMariaDB, "":
+		// MariaDB is the default backend
+		// Check if backend is registered
+		if factory, ok := backendRegistry[configfile.BackendMariaDB]; ok {
+			return factory(ctx, path, opts)
+		}
+		return nil, fmt.Errorf("mariadb backend is not registered; ensure the mariadb storage package is imported")
 	default:
 		// Check if backend is registered (e.g., dolt with CGO)
 		if factory, ok := backendRegistry[backend]; ok {
@@ -64,7 +71,7 @@ func NewWithOptions(ctx context.Context, backend, path string, opts Options) (st
 		if backend == configfile.BackendDolt {
 			return nil, fmt.Errorf("dolt backend is not registered; ensure the dolt storage package is imported")
 		}
-		return nil, fmt.Errorf("unknown storage backend: %s (supported: sqlite, dolt)", backend)
+		return nil, fmt.Errorf("unknown storage backend: %s (supported: mariadb, sqlite, dolt)", backend)
 	}
 }
 
@@ -87,6 +94,21 @@ func NewFromConfigWithOptions(ctx context.Context, beadsDir string, opts Options
 	backend := cfg.GetBackend()
 	switch backend {
 	case configfile.BackendSQLite:
+		return NewWithOptions(ctx, backend, cfg.DatabasePath(beadsDir), opts)
+	case configfile.BackendMariaDB:
+		// Merge MariaDB server config into options (config provides defaults, opts can override)
+		if opts.ServerHost == "" {
+			opts.ServerHost = cfg.GetMariaDBHost()
+		}
+		if opts.ServerPort == 0 {
+			opts.ServerPort = cfg.GetMariaDBPort()
+		}
+		if opts.ServerUser == "" {
+			opts.ServerUser = cfg.GetMariaDBUser()
+		}
+		if opts.Database == "" {
+			opts.Database = cfg.GetMariaDBDatabase()
+		}
 		return NewWithOptions(ctx, backend, cfg.DatabasePath(beadsDir), opts)
 	case configfile.BackendDolt:
 		// Merge Dolt server config into options (config provides defaults, opts can override)
@@ -112,7 +134,7 @@ func NewFromConfigWithOptions(ctx context.Context, beadsDir string, opts Options
 func GetBackendFromConfig(beadsDir string) string {
 	cfg, err := configfile.Load(beadsDir)
 	if err != nil || cfg == nil {
-		return configfile.BackendSQLite
+		return configfile.BackendMariaDB
 	}
 	return cfg.GetBackend()
 }
