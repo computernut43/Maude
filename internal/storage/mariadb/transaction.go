@@ -11,15 +11,15 @@ import (
 	"github.com/steveyegge/beads/internal/types"
 )
 
-// doltTransaction implements storage.Transaction for Dolt
-type doltTransaction struct {
+// mariadbTransaction implements storage.Transaction for MariaDB
+type mariadbTransaction struct {
 	tx    *sql.Tx
 	store *MariaDBStore
 }
 
 // CreateIssueImport is the import-friendly issue creation hook.
-// Dolt does not enforce prefix validation at the storage layer, so this delegates to CreateIssue.
-func (t *doltTransaction) CreateIssueImport(ctx context.Context, issue *types.Issue, actor string, skipPrefixValidation bool) error {
+// MariaDB does not enforce prefix validation at the storage layer, so this delegates to CreateIssue.
+func (t *mariadbTransaction) CreateIssueImport(ctx context.Context, issue *types.Issue, actor string, skipPrefixValidation bool) error {
 	return t.CreateIssue(ctx, issue, actor)
 }
 
@@ -30,7 +30,7 @@ func (s *MariaDBStore) RunInTransaction(ctx context.Context, fn func(tx storage.
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
 
-	tx := &doltTransaction{tx: sqlTx, store: s}
+	tx := &mariadbTransaction{tx: sqlTx, store: s}
 
 	defer func() {
 		if r := recover(); r != nil {
@@ -48,7 +48,7 @@ func (s *MariaDBStore) RunInTransaction(ctx context.Context, fn func(tx storage.
 }
 
 // CreateIssue creates an issue within the transaction
-func (t *doltTransaction) CreateIssue(ctx context.Context, issue *types.Issue, actor string) error {
+func (t *mariadbTransaction) CreateIssue(ctx context.Context, issue *types.Issue, actor string) error {
 	now := time.Now().UTC()
 	if issue.CreatedAt.IsZero() {
 		issue.CreatedAt = now
@@ -91,7 +91,7 @@ func (t *doltTransaction) CreateIssue(ctx context.Context, issue *types.Issue, a
 }
 
 // CreateIssues creates multiple issues within the transaction
-func (t *doltTransaction) CreateIssues(ctx context.Context, issues []*types.Issue, actor string) error {
+func (t *mariadbTransaction) CreateIssues(ctx context.Context, issues []*types.Issue, actor string) error {
 	for _, issue := range issues {
 		if err := t.CreateIssue(ctx, issue, actor); err != nil {
 			return err
@@ -101,12 +101,12 @@ func (t *doltTransaction) CreateIssues(ctx context.Context, issues []*types.Issu
 }
 
 // GetIssue retrieves an issue within the transaction
-func (t *doltTransaction) GetIssue(ctx context.Context, id string) (*types.Issue, error) {
+func (t *mariadbTransaction) GetIssue(ctx context.Context, id string) (*types.Issue, error) {
 	return scanIssueTx(ctx, t.tx, id)
 }
 
 // SearchIssues searches for issues within the transaction
-func (t *doltTransaction) SearchIssues(ctx context.Context, query string, filter types.IssueFilter) ([]*types.Issue, error) {
+func (t *mariadbTransaction) SearchIssues(ctx context.Context, query string, filter types.IssueFilter) ([]*types.Issue, error) {
 	// Simplified search for transaction context
 	whereClauses := []string{}
 	args := []interface{}{}
@@ -170,7 +170,7 @@ func (t *doltTransaction) SearchIssues(ctx context.Context, query string, filter
 }
 
 // UpdateIssue updates an issue within the transaction
-func (t *doltTransaction) UpdateIssue(ctx context.Context, id string, updates map[string]interface{}, actor string) error {
+func (t *mariadbTransaction) UpdateIssue(ctx context.Context, id string, updates map[string]interface{}, actor string) error {
 	setClauses := []string{"updated_at = ?"}
 	args := []interface{}{time.Now().UTC()}
 
@@ -194,7 +194,7 @@ func (t *doltTransaction) UpdateIssue(ctx context.Context, id string, updates ma
 }
 
 // CloseIssue closes an issue within the transaction
-func (t *doltTransaction) CloseIssue(ctx context.Context, id string, reason string, actor string, session string) error {
+func (t *mariadbTransaction) CloseIssue(ctx context.Context, id string, reason string, actor string, session string) error {
 	now := time.Now().UTC()
 	_, err := t.tx.ExecContext(ctx, `
 		UPDATE issues SET status = ?, closed_at = ?, updated_at = ?, close_reason = ?, closed_by_session = ?
@@ -204,13 +204,13 @@ func (t *doltTransaction) CloseIssue(ctx context.Context, id string, reason stri
 }
 
 // DeleteIssue deletes an issue within the transaction
-func (t *doltTransaction) DeleteIssue(ctx context.Context, id string) error {
+func (t *mariadbTransaction) DeleteIssue(ctx context.Context, id string) error {
 	_, err := t.tx.ExecContext(ctx, "DELETE FROM issues WHERE id = ?", id)
 	return err
 }
 
 // AddDependency adds a dependency within the transaction
-func (t *doltTransaction) AddDependency(ctx context.Context, dep *types.Dependency, actor string) error {
+func (t *mariadbTransaction) AddDependency(ctx context.Context, dep *types.Dependency, actor string) error {
 	_, err := t.tx.ExecContext(ctx, `
 		INSERT INTO dependencies (issue_id, depends_on_id, type, created_at, created_by, thread_id)
 		VALUES (?, ?, ?, NOW(), ?, ?)
@@ -219,7 +219,7 @@ func (t *doltTransaction) AddDependency(ctx context.Context, dep *types.Dependen
 	return err
 }
 
-func (t *doltTransaction) GetDependencyRecords(ctx context.Context, issueID string) ([]*types.Dependency, error) {
+func (t *mariadbTransaction) GetDependencyRecords(ctx context.Context, issueID string) ([]*types.Dependency, error) {
 	rows, err := t.tx.QueryContext(ctx, `
 		SELECT issue_id, depends_on_id, type, created_at, created_by, metadata, thread_id
 		FROM dependencies
@@ -250,7 +250,7 @@ func (t *doltTransaction) GetDependencyRecords(ctx context.Context, issueID stri
 }
 
 // RemoveDependency removes a dependency within the transaction
-func (t *doltTransaction) RemoveDependency(ctx context.Context, issueID, dependsOnID string, actor string) error {
+func (t *mariadbTransaction) RemoveDependency(ctx context.Context, issueID, dependsOnID string, actor string) error {
 	_, err := t.tx.ExecContext(ctx, `
 		DELETE FROM dependencies WHERE issue_id = ? AND depends_on_id = ?
 	`, issueID, dependsOnID)
@@ -258,14 +258,14 @@ func (t *doltTransaction) RemoveDependency(ctx context.Context, issueID, depends
 }
 
 // AddLabel adds a label within the transaction
-func (t *doltTransaction) AddLabel(ctx context.Context, issueID, label, actor string) error {
+func (t *mariadbTransaction) AddLabel(ctx context.Context, issueID, label, actor string) error {
 	_, err := t.tx.ExecContext(ctx, `
 		INSERT IGNORE INTO labels (issue_id, label) VALUES (?, ?)
 	`, issueID, label)
 	return err
 }
 
-func (t *doltTransaction) GetLabels(ctx context.Context, issueID string) ([]string, error) {
+func (t *mariadbTransaction) GetLabels(ctx context.Context, issueID string) ([]string, error) {
 	rows, err := t.tx.QueryContext(ctx, `SELECT label FROM labels WHERE issue_id = ? ORDER BY label`, issueID)
 	if err != nil {
 		return nil, err
@@ -283,7 +283,7 @@ func (t *doltTransaction) GetLabels(ctx context.Context, issueID string) ([]stri
 }
 
 // RemoveLabel removes a label within the transaction
-func (t *doltTransaction) RemoveLabel(ctx context.Context, issueID, label, actor string) error {
+func (t *mariadbTransaction) RemoveLabel(ctx context.Context, issueID, label, actor string) error {
 	_, err := t.tx.ExecContext(ctx, `
 		DELETE FROM labels WHERE issue_id = ? AND label = ?
 	`, issueID, label)
@@ -291,7 +291,7 @@ func (t *doltTransaction) RemoveLabel(ctx context.Context, issueID, label, actor
 }
 
 // SetConfig sets a config value within the transaction
-func (t *doltTransaction) SetConfig(ctx context.Context, key, value string) error {
+func (t *mariadbTransaction) SetConfig(ctx context.Context, key, value string) error {
 	_, err := t.tx.ExecContext(ctx, `
 		INSERT INTO config (`+"`key`"+`, value) VALUES (?, ?)
 		ON DUPLICATE KEY UPDATE value = VALUES(value)
@@ -300,7 +300,7 @@ func (t *doltTransaction) SetConfig(ctx context.Context, key, value string) erro
 }
 
 // GetConfig gets a config value within the transaction
-func (t *doltTransaction) GetConfig(ctx context.Context, key string) (string, error) {
+func (t *mariadbTransaction) GetConfig(ctx context.Context, key string) (string, error) {
 	var value string
 	err := t.tx.QueryRowContext(ctx, "SELECT value FROM config WHERE `key` = ?", key).Scan(&value)
 	if err == sql.ErrNoRows {
@@ -310,7 +310,7 @@ func (t *doltTransaction) GetConfig(ctx context.Context, key string) (string, er
 }
 
 // SetMetadata sets a metadata value within the transaction
-func (t *doltTransaction) SetMetadata(ctx context.Context, key, value string) error {
+func (t *mariadbTransaction) SetMetadata(ctx context.Context, key, value string) error {
 	_, err := t.tx.ExecContext(ctx, `
 		INSERT INTO metadata (`+"`key`"+`, value) VALUES (?, ?)
 		ON DUPLICATE KEY UPDATE value = VALUES(value)
@@ -319,7 +319,7 @@ func (t *doltTransaction) SetMetadata(ctx context.Context, key, value string) er
 }
 
 // GetMetadata gets a metadata value within the transaction
-func (t *doltTransaction) GetMetadata(ctx context.Context, key string) (string, error) {
+func (t *mariadbTransaction) GetMetadata(ctx context.Context, key string) (string, error) {
 	var value string
 	err := t.tx.QueryRowContext(ctx, "SELECT value FROM metadata WHERE `key` = ?", key).Scan(&value)
 	if err == sql.ErrNoRows {
@@ -328,7 +328,7 @@ func (t *doltTransaction) GetMetadata(ctx context.Context, key string) (string, 
 	return value, err
 }
 
-func (t *doltTransaction) ImportIssueComment(ctx context.Context, issueID, author, text string, createdAt time.Time) (*types.Comment, error) {
+func (t *mariadbTransaction) ImportIssueComment(ctx context.Context, issueID, author, text string, createdAt time.Time) (*types.Comment, error) {
 	// Verify issue exists in tx
 	iss, err := t.GetIssue(ctx, issueID)
 	if err != nil {
@@ -363,7 +363,7 @@ func (t *doltTransaction) ImportIssueComment(ctx context.Context, issueID, autho
 	return &types.Comment{ID: id, IssueID: issueID, Author: author, Text: text, CreatedAt: createdAt}, nil
 }
 
-func (t *doltTransaction) GetIssueComments(ctx context.Context, issueID string) ([]*types.Comment, error) {
+func (t *mariadbTransaction) GetIssueComments(ctx context.Context, issueID string) ([]*types.Comment, error) {
 	rows, err := t.tx.QueryContext(ctx, `
 		SELECT id, issue_id, author, text, created_at
 		FROM comments
@@ -386,7 +386,7 @@ func (t *doltTransaction) GetIssueComments(ctx context.Context, issueID string) 
 }
 
 // AddComment adds a comment within the transaction
-func (t *doltTransaction) AddComment(ctx context.Context, issueID, actor, comment string) error {
+func (t *mariadbTransaction) AddComment(ctx context.Context, issueID, actor, comment string) error {
 	_, err := t.tx.ExecContext(ctx, `
 		INSERT INTO events (issue_id, event_type, actor, comment)
 		VALUES (?, ?, ?, ?)

@@ -30,10 +30,10 @@ echo "Use 'bd' for task tracking" >> AGENTS.md
 
 ## 🛠 Features
 
-* **Git as Database:** Issues stored as JSONL in `.beads/`. Versioned, branched, and merged like code.
+* **MariaDB Backend:** Issues stored in MariaDB for robust, server-based storage with multi-user support.
 * **Agent-Optimized:** JSON output, dependency tracking, and auto-ready task detection.
 * **Zero Conflict:** Hash-based IDs (`bd-a1b2`) prevent merge collisions in multi-agent/multi-branch workflows.
-* **Invisible Infrastructure:** SQLite local cache for speed; background daemon for auto-sync.
+* **Invisible Infrastructure:** Background daemon for auto-sync; optional JSONL export for version control.
 * **Compaction:** Semantic "memory decay" summarizes old closed tasks to save context window.
 
 ## 📖 Essential Commands
@@ -75,5 +75,5 @@ See [docs/COMMUNITY_TOOLS.md](docs/COMMUNITY_TOOLS.md) for a curated list of com
 
 ## 📝 Documentation
 
-* [Installing](docs/INSTALLING.md) | [Agent Workflow](AGENT_INSTRUCTIONS.md) | [Copilot Setup](docs/COPILOT_INTEGRATION.md) | [Articles](ARTICLES.md) | [Sync Branch Mode](docs/PROTECTED_BRANCHES.md) | [Troubleshooting](docs/TROUBLESHOOTING.md) | [FAQ](docs/FAQ.md)
+* [Installing](docs/INSTALLING.md) | [MariaDB Setup](docs/MARIADB.md) | [Agent Workflow](AGENT_INSTRUCTIONS.md) | [Copilot Setup](docs/COPILOT_INTEGRATION.md) | [Articles](ARTICLES.md) | [Sync Branch Mode](docs/PROTECTED_BRANCHES.md) | [Troubleshooting](docs/TROUBLESHOOTING.md) | [FAQ](docs/FAQ.md)
 * [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/steveyegge/beads)

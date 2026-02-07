@@ -4,7 +4,7 @@
 // for issue storage. This backend connects to a MariaDB server via the MySQL protocol.
 //
 // Key differences from SQLite backend:
-//   - Connects to mariadb server via MySQL protocol
+//   - Connects to MariaDB server via MySQL protocol
 //   - Multi-writer support via server mode
 //   - No local file-based storage
 package mariadb

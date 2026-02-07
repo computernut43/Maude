@@ -1,7 +1,6 @@
 package mariadb
 
 // schema defines the MySQL-compatible database schema for MariaDB.
-// This mirrors the Dolt schema but is optimized for MariaDB.
 const schema = `
 -- Issues table
 CREATE TABLE IF NOT EXISTS issues (
