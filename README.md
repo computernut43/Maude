@@ -16,7 +16,7 @@
 
 ```bash
 # Install the CLI — we don't have all day, dear
-curl -fsSL https://raw.githubusercontent.com/steveyegge/beads/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/computernut43/Maude/main/scripts/install.sh | bash
 
 # Initialize in YOUR project
 cd your-project
